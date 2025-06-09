@@ -1,99 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { PitchDetector } from "pitchy";
-
-// CSSをコンポーネント内に記述して、単体で完結するようにします
-const styles = `
-  .tuner-body {
-    background-color: #2D2D2D;
-    width: 300px;
-    padding: 20px;
-    border-radius: 12px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-    border: 2px solid #444;
-    margin: 50px auto;
-    font-family: 'Orbitron', sans-serif; /* デジタル風フォント */
-  }
-
-  .screen {
-    background-color: #000;
-    border: 2px solid #555;
-    border-radius: 8px;
-    padding: 15px;
-    margin-bottom: 25px;
-    text-align: center;
-  }
-
-  .note-display {
-    color: #FF9800; /* オレンジ色 */
-    font-size: 48px;
-    font-weight: bold;
-    text-shadow: 0 0 10px #FF9800;
-  }
-
-  .freq-display {
-    color: #FFC107; /* 少し明るいオレンジ */
-    font-size: 18px;
-    margin-top: 5px;
-  }
-  
-  .meter {
-    position: relative;
-    width: 220px;
-    height: 110px; /* 半円なので高さは幅の半分 */
-    margin: 20px auto;
-    border-top-left-radius: 110px; /* 半円を作る */
-    border-top-right-radius: 110px;
-    background-color: #1a1a1a;
-    border: 2px solid #555;
-    box-shadow: inset 0 6px 12px rgba(0,0,0,0.4);
-    overflow: hidden; /* はみ出した部分を隠す */
-  }
-
-  .scale {
-    position: absolute;
-    color: #ccc;
-    font-size: 12px;
-  }
-  .scale.minus-50 { top: 60px; left: 15px; }
-  .scale.zero { top: 5px; left: 50%; transform: translateX(-50%); }
-  .scale.plus-50 { top: 60px; right: 15px; }
-
-  .needle {
-    position: absolute;
-    bottom: -10px; /* 根本を少し下にずらす */
-    left: 50%;
-    width: 2px;
-    height: 90px;
-    background-color: #FF5722; /* 針の色 */
-    box-shadow: 0 0 5px #FF5722;
-    transform-origin: bottom center; /* 根本を軸に回転 */
-    transition: transform 0.2s linear; /* 針の動きを滑らかに */
-    border-top-left-radius: 2px;
-    border-top-right-radius: 2px;
-  }
-
-  .pivot {
-    position: absolute;
-    bottom: -8px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 16px;
-    height: 16px;
-    background-color: #444;
-    border-radius: 50%;
-    border: 2px solid #666;
-  }
-
-  .status-text {
-    text-align: center;
-    color: #aaa;
-    margin-top: 15px;
-    height: 20px; /* 高さを固定してガタつきを防ぐ */
-  }
-
-  /* OrbitronフォントをGoogle Fontsからインポート */
-  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
-`;
+import "./Tuner.css"; // CSSファイルをインポート
 
 // 定数 (変更なし)
 const NOTES = [
@@ -237,7 +144,6 @@ const Tuner: React.FC = () => {
 
   return (
     <>
-      <style>{styles}</style>
       <div className="tuner-body">
         <div className="screen">
           <div
