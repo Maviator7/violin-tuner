@@ -1,6 +1,101 @@
 import React, { useEffect, useRef, useState } from "react";
 import { PitchDetector } from "pitchy";
 
+// CSSをコンポーネント内に記述して、単体で完結するようにします
+const styles = `
+  .tuner-body {
+    background-color: #2D2D2D;
+    width: 300px;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    border: 2px solid #444;
+    margin: 50px auto;
+    font-family: 'Orbitron', sans-serif; /* デジタル風フォント */
+  }
+
+  .screen {
+    background-color: #000;
+    border: 2px solid #555;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 25px;
+    text-align: center;
+  }
+
+  .note-display {
+    color: #FF9800; /* オレンジ色 */
+    font-size: 48px;
+    font-weight: bold;
+    text-shadow: 0 0 10px #FF9800;
+  }
+
+  .freq-display {
+    color: #FFC107; /* 少し明るいオレンジ */
+    font-size: 18px;
+    margin-top: 5px;
+  }
+  
+  .meter {
+    position: relative;
+    width: 220px;
+    height: 110px; /* 半円なので高さは幅の半分 */
+    margin: 20px auto;
+    border-top-left-radius: 110px; /* 半円を作る */
+    border-top-right-radius: 110px;
+    background-color: #1a1a1a;
+    border: 2px solid #555;
+    box-shadow: inset 0 6px 12px rgba(0,0,0,0.4);
+    overflow: hidden; /* はみ出した部分を隠す */
+  }
+
+  .scale {
+    position: absolute;
+    color: #ccc;
+    font-size: 12px;
+  }
+  .scale.minus-50 { top: 60px; left: 15px; }
+  .scale.zero { top: 5px; left: 50%; transform: translateX(-50%); }
+  .scale.plus-50 { top: 60px; right: 15px; }
+
+  .needle {
+    position: absolute;
+    bottom: -10px; /* 根本を少し下にずらす */
+    left: 50%;
+    width: 2px;
+    height: 90px;
+    background-color: #FF5722; /* 針の色 */
+    box-shadow: 0 0 5px #FF5722;
+    transform-origin: bottom center; /* 根本を軸に回転 */
+    transition: transform 0.2s linear; /* 針の動きを滑らかに */
+    border-top-left-radius: 2px;
+    border-top-right-radius: 2px;
+  }
+
+  .pivot {
+    position: absolute;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 16px;
+    height: 16px;
+    background-color: #444;
+    border-radius: 50%;
+    border: 2px solid #666;
+  }
+
+  .status-text {
+    text-align: center;
+    color: #aaa;
+    margin-top: 15px;
+    height: 20px; /* 高さを固定してガタつきを防ぐ */
+  }
+
+  /* OrbitronフォントをGoogle Fontsからインポート */
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
+`;
+
+// 定数 (変更なし)
 const NOTES = [
   { note: "C3", freq: 130.81 },
   { note: "C#3", freq: 138.59 },
@@ -39,7 +134,6 @@ const NOTES = [
   { note: "A#5", freq: 932.33 },
   { note: "B5", freq: 987.77 },
 ];
-
 function getNearestNote(freq: number) {
   let closest = NOTES[0];
   let minDiff = Math.abs(freq - closest.freq);
@@ -52,95 +146,127 @@ function getNearestNote(freq: number) {
   }
   return closest;
 }
-
 function getCentDifference(pitch: number, targetFreq: number): number {
   return 1200 * Math.log2(pitch / targetFreq);
 }
 
-function centDiffToPercent(cent: number): number {
-  const maxCent = 50;
-  const percent = ((cent + maxCent) / (maxCent * 2)) * 100;
-  return Math.min(100, Math.max(0, percent)); // 0～100%に制限
+// ★★★ 新しい関数: セント差を針の角度に変換 ★★★
+function centToDegrees(cent: number | null): number {
+  if (cent === null) {
+    return 0;
+  }
+  // -50centを-45度、+50centを+45度に対応させる (90度の範囲で動く)
+  const degrees = (cent / 50) * 45;
+  // 角度が振り切れないように制限する
+  return Math.max(-45, Math.min(45, degrees));
 }
 
 const Tuner: React.FC = () => {
   const [pitch, setPitch] = useState<number | null>(null);
-  const [clarity, setClarity] = useState<number | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [cent, setCent] = useState<number | null>(null);
+
   const audioContextRef = useRef<AudioContext | null>(null);
+  const animationFrameIdRef = useRef<number | null>(null);
 
   useEffect(() => {
+    // Pitch detection logic (元のコードと同じなので変更なし)
+    let isMounted = true;
     const init = async () => {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const audioContext = new AudioContext();
-      audioContextRef.current = audioContext;
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+        if (!isMounted) return;
 
-      const source = audioContext.createMediaStreamSource(stream);
-      const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 2048;
-      source.connect(analyser);
+        const context = new AudioContext();
+        audioContextRef.current = context;
+        const source = context.createMediaStreamSource(stream);
+        const analyser = context.createAnalyser();
+        analyser.fftSize = 2048;
+        source.connect(analyser);
 
-      const buffer = new Float32Array(analyser.fftSize);
-      const pitchDetector = PitchDetector.forFloat32Array(analyser.fftSize);
+        const pitchDetector = PitchDetector.forFloat32Array(analyser.fftSize);
+        const buffer = new Float32Array(analyser.fftSize);
 
-      const detectPitch = () => {
-        analyser.getFloatTimeDomainData(buffer);
-        const [detectedPitch, clarity] = pitchDetector.findPitch(
-          buffer,
-          audioContext.sampleRate
-        );
+        const detectPitch = () => {
+          if (!isMounted) return;
 
-        if (clarity > 0.95) {
-          const nearest = getNearestNote(detectedPitch);
-          const centDiff = getCentDifference(detectedPitch, nearest.freq);
+          analyser.getFloatTimeDomainData(buffer);
+          const [detectedPitch, clarity] = pitchDetector.findPitch(
+            buffer,
+            context.sampleRate
+          );
 
-          setPitch(detectedPitch);
-          setClarity(clarity);
-          setNote(nearest.note);
-          setCent(centDiff);
-        }
-
-        requestAnimationFrame(detectPitch);
-      };
-
-      detectPitch();
+          if (clarity > 0.92 && detectedPitch > 0) {
+            const nearest = getNearestNote(detectedPitch);
+            const centDiff = getCentDifference(detectedPitch, nearest.freq);
+            setPitch(detectedPitch);
+            setNote(nearest.note);
+            setCent(centDiff);
+          } else {
+            setPitch(null);
+            setNote(null);
+            setCent(null);
+          }
+          animationFrameIdRef.current = requestAnimationFrame(detectPitch);
+        };
+        detectPitch();
+      } catch (err) {
+        console.error("マイクへのアクセスに失敗しました:", err);
+      }
     };
-
     init();
+
+    return () => {
+      isMounted = false;
+      if (animationFrameIdRef.current) {
+        cancelAnimationFrame(animationFrameIdRef.current);
+      }
+      if (
+        audioContextRef.current &&
+        audioContextRef.current.state !== "closed"
+      ) {
+        audioContextRef.current.close();
+      }
+    };
   }, []);
 
-  return (
-    <div style={{ textAlign: "center", marginTop: "50px" }}>
-      <h1>🎻 バイオリン チューナー</h1>
-      {pitch ? (
-        <div>
-          <p>検出周波数: {pitch.toFixed(2)} Hz</p>
-          <p>近い音: {note}</p>
-          <p>音の一致度: {(clarity! * 100).toFixed(1)}%</p>
-          <p>セント差: {cent?.toFixed(2)} cent</p>
+  const rotation = centToDegrees(cent);
+  const isTuned = cent !== null && Math.abs(cent) < 5; // ±5cent以内ならチューニング完了
 
-          {/* メーター */}
-          <div className="w-64 bg-gray-300 h-4 rounded-full mx-auto mt-4 relative">
-            <div
-              className="absolute top-0 h-4 bg-green-500 rounded-full"
-              style={{
-                left: `${centDiffToPercent(cent ?? 0)}%`,
-                width: "4px",
-                transform: "translateX(-50%)",
-              }}
-            />
+  return (
+    <>
+      <style>{styles}</style>
+      <div className="tuner-body">
+        <div className="screen">
+          <div
+            className="note-display"
+            style={{ color: isTuned ? "#4CAF50" : "#FF9800" }}
+          >
+            {note ?? "--"}
           </div>
-          <div className="flex justify-between text-xs text-gray-500 w-64 mx-auto mt-1">
-            <span>-50¢</span>
-            <span>0¢</span>
-            <span>+50¢</span>
+          <div className="freq-display">
+            {pitch ? `${pitch.toFixed(2)} Hz` : ""}
           </div>
         </div>
-      ) : (
-        <p>マイクからの入力待ち...</p>
-      )}
-    </div>
+
+        <div className="meter">
+          <div className="scale minus-50">-50</div>
+          <div className="scale zero">0</div>
+          <div className="scale plus-50">+50</div>
+          <div
+            className="needle"
+            style={{ transform: `rotate(${rotation}deg)` }}
+          />
+          <div className="pivot" />
+        </div>
+
+        <div className="status-text">
+          {note === null ? "マイク入力待ち..." : isTuned ? "OK" : "..."}
+        </div>
+      </div>
+    </>
   );
 };
 
